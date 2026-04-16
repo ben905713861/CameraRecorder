@@ -1,0 +1,15 @@
+output_path: "e:/Desktop"
+record_interval: 10
+camera_list:
+  - name: "room"
+    host: "192.168.1.20"
+    port: 8899
+    username: "admin"
+    password: ${ONVIF_PASSWORD}
+    enabled: true
+    record_config:
+      pixel_threshold: 25  # 像素差异阈值
+      motion_ratio_threshold: 0.02  # 像素变化比例阈值（2%）
+      alert_interval: 5  # 告警间隔（秒）
+      resize_width: 640  # 处理分辨率
+      frame_skip: 5  # 跳帧间隔
