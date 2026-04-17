@@ -1,7 +1,9 @@
 import cv2
 import time
 
-def motion_detect(rtsp_url,
+def motion_detect(
+         name,
+         rtsp_url,
          pixel_threshold,
          motion_ratio_threshold,
          alert_interval,
@@ -32,7 +34,7 @@ def motion_detect(rtsp_url,
     frame_count = 0
     last_alert_time = 0
 
-    print("starting motion detection (with frame skipping)...")
+    print(f"starting motion detection on camera [{name}] (with frame skipping)...")
 
     while True:
         ret, frame = cap.read()

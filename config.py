@@ -1,7 +1,12 @@
+import os
+import re
+
 import yaml
 from pydantic import BaseModel
 
 from camera_urls import get_streams
+
+PLACEHOLDER_PATTERN = re.compile(r"\$\{([A-Za-z_]\w*)(?::([^}]*))?}")
 
 class RecordConfig(BaseModel):
     # enabled: bool = True
@@ -26,15 +31,33 @@ class BaseConfig(BaseModel):
     record_interval: int
     camera_list: list[CameraConfig]
 
+def _resolve_placeholders(value):
+    if isinstance(value, dict):
+        return {key: _resolve_placeholders(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_resolve_placeholders(item) for item in value]
+    if isinstance(value, str):
+        def _replace(match):
+            env_name = match.group(1)
+            default_value = match.group(2)
+            env_value = os.getenv(env_name)
+            if env_value is not None:
+                return env_value
+            if default_value is not None:
+                return default_value
+            raise ValueError(
+                f"Missing environment variable '{env_name}' for placeholder '{match.group(0)}'"
+            )
+
+        return PLACEHOLDER_PATTERN.sub(_replace, value)
+    return value
+
 def load_config():
     with open("config.yml", "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
+    raw = _resolve_placeholders(raw)
     config = BaseConfig(**raw)
 
     for camera_config in config.camera_list:
         camera_config.rtsp_streams = get_streams(**camera_config.model_dump())
     return config
-
-if __name__ == '__main__':
-    res = load_config()
-    print(res)

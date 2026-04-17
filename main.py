@@ -16,5 +16,6 @@ if __name__ == '__main__':
             recorder.record()
 
         motion_detect(**camera_config.record_config.model_dump(),
+                      name=camera_config.name,
                       rtsp_url=sub_stream_url,
                       callback=record)

@@ -43,7 +43,3 @@ def get_streams(host, port, username, password, **_):
         return get_onvif_streams(host, port, username, password)
     except:
         return get_isapi_streams(host, port, username, password)
-
-if __name__ == "__main__":
-    res = get_streams("192.168.1.20", 8899, "admin", os.getenv('ONVIF_PASSWORD'))
-    print(res)
