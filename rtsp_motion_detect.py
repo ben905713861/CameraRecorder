@@ -75,7 +75,7 @@ def motion_detect(
         changed_pixels = cv2.countNonZero(thresh)
         total_pixels = thresh.shape[0] * thresh.shape[1]
         motion_ratio = changed_pixels / total_pixels
-        print(motion_ratio)
+        # print(motion_ratio)
 
         # alert if motion detected and alert interval has passed
         current_time = time.time()

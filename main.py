@@ -1,3 +1,5 @@
+import threading
+
 from config import load_config
 from rtsp_recorder import Recorder
 from rtsp_motion_detect import motion_detect
@@ -15,7 +17,11 @@ if __name__ == '__main__':
         def record():
             recorder.record()
 
-        motion_detect(**camera_config.record_config.model_dump(),
-                      name=camera_config.name,
-                      rtsp_url=sub_stream_url,
-                      callback=record)
+        def motion_detect_worker():
+            motion_detect(**camera_config.record_config.model_dump(),
+                          name=camera_config.name,
+                          rtsp_url=sub_stream_url,
+                          callback=record)
+
+        t = threading.Thread(target=motion_detect_worker)
+        t.start()
