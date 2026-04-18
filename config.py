@@ -4,8 +4,6 @@ import re
 import yaml
 from pydantic import BaseModel
 
-from camera_urls import get_streams
-
 PLACEHOLDER_PATTERN = re.compile(r"\$\{([A-Za-z_]\w*)(?::([^}]*))?}")
 
 class RecordConfig(BaseModel):
@@ -13,7 +11,6 @@ class RecordConfig(BaseModel):
     pixel_threshold: int = 25  # 像素差异阈值
     motion_ratio_threshold: float = 0.02  # 像素变化比例阈值（2%）
     alert_interval: int = 5  # 告警间隔（秒）
-    resize_width: int = 640  # 处理分辨率
     frame_skip: int = 5  # 跳帧间隔（每5帧检测一次）
 
 class CameraConfig(BaseModel):
@@ -24,7 +21,6 @@ class CameraConfig(BaseModel):
     password: str = ""
     enabled: bool = True
     record_config: RecordConfig
-    rtsp_streams: list[str] = []
 
 class BaseConfig(BaseModel):
     output_path: str
@@ -57,7 +53,4 @@ def load_config():
         raw = yaml.safe_load(f)
     raw = _resolve_placeholders(raw)
     config = BaseConfig(**raw)
-
-    for camera_config in config.camera_list:
-        camera_config.rtsp_streams = get_streams(**camera_config.model_dump())
     return config

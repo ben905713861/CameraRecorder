@@ -7,7 +7,6 @@ def motion_detect(
          pixel_threshold,
          motion_ratio_threshold,
          alert_interval,
-         resize_width,
          frame_skip,
          callback):
     cap = cv2.VideoCapture(rtsp_url)
@@ -22,11 +21,6 @@ def motion_detect(
     if not ret:
         print("unable to read from video stream")
         return
-
-    # resize
-    h, w = frame.shape[:2]
-    scale = resize_width / w
-    frame = cv2.resize(frame, (resize_width, int(h * scale)))
 
     prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     prev_gray = cv2.GaussianBlur(prev_gray, (5, 5), 0)
@@ -50,11 +44,6 @@ def motion_detect(
         # skip frames
         if frame_count % frame_skip != 0:
             continue
-
-        # resize
-        h, w = frame.shape[:2]
-        scale = resize_width / w
-        frame = cv2.resize(frame, (resize_width, int(h * scale)))
 
         # gary and blur
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
