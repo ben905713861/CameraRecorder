@@ -1,79 +1,93 @@
 import cv2
 import time
 
-def motion_detect(
-         name,
-         rtsp_url,
-         pixel_threshold,
-         motion_ratio_threshold,
-         alert_interval,
-         frame_skip,
-         callback):
-    cap = cv2.VideoCapture(rtsp_url)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+class MotionDetector:
+    def __init__(self,
+                 rtsp_url,
+                 name,
+                 pixel_threshold,
+                 motion_ratio_threshold,
+                 alert_interval,
+                 frame_skip,
+                 callback):
+        self.rtsp_url = rtsp_url
+        self.name = name
+        self.pixel_threshold = pixel_threshold
+        self.motion_ratio_threshold = motion_ratio_threshold
+        self.alert_interval = alert_interval
+        if frame_skip <= 0:
+            raise ValueError("frame_skip must be a positive integer, > 0")
+        self.frame_skip = frame_skip
+        self.cap = None
+        self.prev_gray = None
+        self.callback = callback
 
-    if not cap.isOpened():
-        print("unable to connect to RTSP stream")
-        return
+    def __get_connect(self):
+        while True:
+            self.cap = cv2.VideoCapture(self.rtsp_url)
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+            if self.cap.isOpened():
+                print("connect to RTSP stream successfully")
+                break
+            print("unable to connect to RTSP stream")
+            time.sleep(10)
 
-    # read first frame
-    ret, frame = cap.read()
-    if not ret:
-        print("unable to read from video stream")
-        return
+    def detect(self):
+        self.__get_connect()
 
-    prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    prev_gray = cv2.GaussianBlur(prev_gray, (5, 5), 0)
+        frame_count = 0
+        last_alert_time = 0
+        print(f"starting motion detection on camera [{self.name}] (with frame skipping)...")
 
-    frame_count = 0
-    last_alert_time = 0
+        while True:
+            ret, frame = self.cap.read()
+            if not ret:
+                print("video stream interrupted, trying to reconnect...")
+                self.cap.release()
+                self.__get_connect()
+                self.prev_gray = None
+                continue
 
-    print(f"starting motion detection on camera [{name}] (with frame skipping)...")
+            # skip frames
+            frame_count += 1
+            if frame_count % self.frame_skip != 0:
+                continue
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("video stream interrupted, trying to reconnect...")
-            time.sleep(2)
-            cap.release()
-            cap = cv2.VideoCapture(rtsp_url)
-            continue
+            # gary and blur
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
-        frame_count += 1
+            if self.prev_gray is None:
+                self.prev_gray = gray
+                continue
 
-        # skip frames
-        if frame_count % frame_skip != 0:
-            continue
+            # calculate frame difference
+            diff = cv2.absdiff(self.prev_gray, gray)
 
-        # gary and blur
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
+            # binary thresholding
+            _, thresh = cv2.threshold(diff, self.pixel_threshold, 255, cv2.THRESH_BINARY)
 
-        # calculate frame difference
-        diff = cv2.absdiff(prev_gray, gray)
+            # remove noise
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+            thresh = cv2.dilate(thresh, kernel, iterations=1)
 
-        # binary thresholding
-        _, thresh = cv2.threshold(diff, pixel_threshold, 255, cv2.THRESH_BINARY)
+            # calculate motion ratio
+            changed_pixels = cv2.countNonZero(thresh)
+            total_pixels = thresh.shape[0] * thresh.shape[1]
+            motion_ratio = changed_pixels / total_pixels
+            # print(motion_ratio)
 
-        # remove noise
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
-        thresh = cv2.dilate(thresh, kernel, iterations=1)
+            # alert if motion detected and alert interval has passed
+            current_time = time.time()
+            if motion_ratio > self.motion_ratio_threshold and \
+               (current_time - last_alert_time > self.alert_interval):
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                print(f"[{timestamp}] ⚠️ detected motion: {motion_ratio:.2%}")
 
-        # calculate motion ratio
-        changed_pixels = cv2.countNonZero(thresh)
-        total_pixels = thresh.shape[0] * thresh.shape[1]
-        motion_ratio = changed_pixels / total_pixels
-        # print(motion_ratio)
+                self.callback()
 
-        # alert if motion detected and alert interval has passed
-        current_time = time.time()
-        if motion_ratio > motion_ratio_threshold and \
-           (current_time - last_alert_time > alert_interval):
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            print(f"[{timestamp}] ⚠️ detected motion: {motion_ratio:.2%}")
-            callback()
-            last_alert_time = current_time
+                last_alert_time = current_time
 
-        # update previous frame
-        prev_gray = gray
+            # update previous frame
+            self.prev_gray = gray

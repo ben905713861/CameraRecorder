@@ -4,8 +4,8 @@ import traceback
 
 from camera_urls import get_streams
 from config import load_config
+from rtsp_motion_detect import MotionDetector
 from rtsp_recorder import Recorder
-from rtsp_motion_detect import motion_detect
 
 
 def motion_detect_worker(config, camera_config):
@@ -20,10 +20,12 @@ def motion_detect_worker(config, camera_config):
             def record():
                 recorder.record()
 
-            motion_detect(**camera_config.record_config.model_dump(),
+            motion_detector = MotionDetector(**camera_config.record_config.model_dump(),
                           name=camera_config.name,
                           rtsp_url=sub_stream_url,
                           callback=record)
+            motion_detector.detect()
+
         except Exception:
             traceback.print_exc()
             print(f"camera [{camera_config.name}] connection error, retrying in 5 seconds...")
@@ -35,9 +37,8 @@ def main():
         if not camera_config.enabled:
             print("camera {} is disabled, skipping...".format(camera_config.name))
             continue
-        t = threading.Thread(target=motion_detect_worker, args=(config, camera_config), daemon=True)
+        t = threading.Thread(target=motion_detect_worker, args=(config, camera_config), daemon=False)
         t.start()
-    time.sleep(9999999)
 
 if __name__ == '__main__':
     main()
