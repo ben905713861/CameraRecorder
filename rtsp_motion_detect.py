@@ -22,18 +22,16 @@ class MotionDetector:
         self.prev_gray = None
         self.callback = callback
 
-    def __get_connect(self):
-        while True:
-            self.cap = cv2.VideoCapture(self.rtsp_url)
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
-            if self.cap.isOpened():
-                print("connect to RTSP stream successfully")
-                break
-            print("unable to connect to RTSP stream")
-            time.sleep(10)
+    def __connect(self):
+        self.cap = cv2.VideoCapture(self.rtsp_url)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+        if self.cap.isOpened():
+            print("connect to RTSP stream successfully")
+            return
+        raise ConnectionError("unable to connect to RTSP stream")
 
     def detect(self):
-        self.__get_connect()
+        self.__connect()
 
         frame_count = 0
         last_alert_time = 0
@@ -42,11 +40,8 @@ class MotionDetector:
         while True:
             ret, frame = self.cap.read()
             if not ret:
-                print("video stream interrupted, trying to reconnect...")
                 self.cap.release()
-                self.__get_connect()
-                self.prev_gray = None
-                continue
+                raise ConnectionError("video stream interrupted, trying to reconnect...")
 
             # skip frames
             frame_count += 1

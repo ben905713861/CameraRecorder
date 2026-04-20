@@ -1,6 +1,5 @@
 import threading
 import time
-import traceback
 
 from camera_urls import get_streams
 from config import load_config
@@ -9,6 +8,7 @@ from rtsp_recorder import Recorder
 
 
 def motion_detect_worker(config, camera_config):
+    recorder = None
     while True:
         try:
             rtsp_streams = get_streams(**camera_config.model_dump())
@@ -25,11 +25,19 @@ def motion_detect_worker(config, camera_config):
                           rtsp_url=sub_stream_url,
                           callback=record)
             motion_detector.detect()
-
-        except Exception:
-            traceback.print_exc()
-            print(f"camera [{camera_config.name}] connection error, retrying in 5 seconds...")
-            time.sleep(5)
+        except ConnectionError as e:
+            print(f"camera [{camera_config.name}] connection lost, retrying in 60 seconds...", e)
+            try:
+                time.sleep(60)
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt, exiting...")
+                if recorder:
+                    recorder.cleanup()
+                break
+        finally:
+            if recorder:
+                recorder.cleanup()
+                recorder = None
 
 def main():
     config = load_config()

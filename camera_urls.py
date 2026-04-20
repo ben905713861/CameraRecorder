@@ -42,4 +42,7 @@ def get_streams(host, port, username, password, **_):
     try:
         return get_onvif_streams(host, port, username, password)
     except:
-        return get_isapi_streams(host, port, username, password)
+        try:
+            return get_isapi_streams(host, port, username, password)
+        except:
+            raise ConnectionError("unable to retrieve RTSP stream URLs using both ONVIF and ISAPI methods")
