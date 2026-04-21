@@ -10,18 +10,19 @@ from pathlib import Path
 from threading import Timer
 
 class Recorder:
-    def __init__(self, name, rtsp_url, output_path, record_interval=10):
+    def __init__(self, camera_name, rtsp_url, output_path, record_interval=10):
         if output_path is None:
             raise ValueError("output_path variable is not set")
         self.output_path = output_path
         self.record_interval = record_interval
-        self.name = name
+        self.camera_name = camera_name
         self.rtsp_url = rtsp_url
 
+        self.first_segment = None
         self.is_recording = False
         self.timer = None
 
-        self.temp_dir = os.path.join(tempfile.gettempdir(), "camera", self.name)
+        self.temp_dir = os.path.join(tempfile.gettempdir(), "camera", self.camera_name)
         self.__clear_temp_folder()
         os.makedirs(self.temp_dir, exist_ok=True)
 
@@ -33,8 +34,7 @@ class Recorder:
         atexit.register(self.cleanup)
 
         self.event_time = None
-        self.event_temp_list_path = None
-
+        self.lock = threading.Lock()
 
     def __clear_unused_temp_segments(self):
         while True:
@@ -65,28 +65,30 @@ class Recorder:
         )
 
     def record(self):
-        if self.is_recording:
-            print("already recording")
-            if self.timer:
-                self.timer.cancel()
+        with self.lock:
+            if self.is_recording:
+                print("already recording")
+                if self.timer:
+                    self.timer.cancel()
+                self.timer = Timer(self.record_interval, self.__stop_record)
+                self.timer.start()
+                return
+            print("[INFO] starting recording")
+            self.is_recording = True
+            self.event_time = datetime.now()
+
+            # self.ffmpeg_record()
+            self.first_segment = self.__get_latest_segment()
+            print("first_segment", self.first_segment)
+
             self.timer = Timer(self.record_interval, self.__stop_record)
             self.timer.start()
-            return
-        print("[INFO] starting recording")
-        self.is_recording = True
-        self.event_time = datetime.now()
-        self.event_temp_list_path = os.path.join(self.temp_dir, self.event_time.strftime("%Y%m%d_%H%M%S"))
-        os.makedirs(self.event_temp_list_path, exist_ok=True)
-
-        # self.ffmpeg_record()
-        self.__record_1st_segment()
-
-        self.timer = Timer(self.record_interval, self.__stop_record)
-        self.timer.start()
 
     def __get_latest_segment(self) -> Path:
         file_paths = self.__get_temp_dir_filelist()
-        if len(file_paths) <= 1:
+        if len(file_paths) == 0:
+            raise RuntimeError("no segment files found in temp directory")
+        if len(file_paths) == 1:
             return file_paths[0]
         return file_paths[1]
 
@@ -99,23 +101,22 @@ class Recorder:
         file_paths.sort(key=lambda f: f.name, reverse=True)
         return file_paths
 
-    def __record_1st_segment(self):
-        self.first_segment = self.__get_latest_segment()
-        print("first_segment", self.first_segment)
-
     def __stop_record(self):
-        if self.timer:
-            self.timer.cancel()
-        try:
-            Timer(self.record_interval * 2, self.__compact_videos).start()
-        finally:
-            print("[INFO] stopped recording")
-            self.is_recording = False
+        with (self.lock):
+            if self.timer:
+                self.timer.cancel()
+            try:
+                Timer(self.record_interval * 2, self.__compact_videos,
+                      (self.first_segment, self.event_time)
+                ).start()
+            finally:
+                print("[INFO] stopped recording")
+                self.is_recording = False
 
-    def __compact_videos(self):
+    def __compact_videos(self, first_segment, event_time):
         last_segment = self.__get_latest_segment()
         print("last_segment", last_segment)
-        first_index = int(self.first_segment.stem)
+        first_index = int(first_segment.stem)
         last_index = int(last_segment.stem)
         file_list = []
         for i in range(first_index, last_index + 1):
@@ -125,11 +126,13 @@ class Recorder:
         if len(file_list) >= 3:
             file_list.pop()
 
-        compact_file_list_path = os.path.join(self.event_temp_list_path, "list.txt")
+        event_temp_list_path = os.path.join(self.temp_dir, event_time.strftime("%Y%m%d_%H%M%S"))
+        os.makedirs(event_temp_list_path, exist_ok=True)
+        compact_file_list_path = os.path.join(event_temp_list_path, "list.txt")
         with open(compact_file_list_path, "w", encoding="utf-8") as f:
             file_content = "\n".join(file_list)
             f.write(file_content)
-        event_output_temp_file = os.path.join(self.event_temp_list_path, "event.mp4")
+        event_output_temp_file = os.path.join(event_temp_list_path, "event.mp4")
         command = [
             "ffmpeg",
             "-f", "concat",
@@ -143,12 +146,12 @@ class Recorder:
             print(result.stderr.decode())
             return
 
-        _date = self.event_time.strftime("%Y-%m-%d")
-        _time = self.event_time.strftime("%H-%M-%S")
-        new_output_file = os.path.join(self.output_path, _date, self.name, _time + ".mp4")
+        _date = event_time.strftime("%Y-%m-%d")
+        _time = event_time.strftime("%H-%M-%S")
+        new_output_file = os.path.join(self.output_path, _date, self.camera_name, _time + ".mp4")
         os.makedirs(os.path.dirname(new_output_file), exist_ok=True)
         shutil.copy(event_output_temp_file, new_output_file)
-        shutil.rmtree(self.event_temp_list_path)
+        shutil.rmtree(event_temp_list_path)
 
     def __stop_background_record(self):
         if self.background_record_process:

@@ -1,3 +1,5 @@
+import threading
+
 import cv2
 import time
 
@@ -80,7 +82,10 @@ class MotionDetector:
                 timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
                 print(f"[{timestamp}] ⚠️ detected motion: {motion_ratio:.2%}")
 
-                self.callback()
+                try:
+                    self.callback()
+                except:
+                    print("callback error, ignoring...")
 
                 last_alert_time = current_time
 

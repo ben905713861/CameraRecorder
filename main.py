@@ -13,12 +13,12 @@ def motion_detect_worker(config, camera_config):
         try:
             rtsp_streams = get_streams(**camera_config.model_dump())
             if not rtsp_streams:
-                raise ConnectionError(f"camera [{camera_config.name}] returned no streams")
+                raise ConnectionError(f"camera [{camera_config.camera_name}] returned no streams")
             main_stream_url = rtsp_streams[0]
             sub_stream_url = rtsp_streams[1] if len(rtsp_streams) > 1 else main_stream_url
 
             recorder = Recorder(
-                camera_config.name,
+                camera_config.camera_name,
                 main_stream_url,
                 config.output_path,
                 record_interval=config.record_interval,
@@ -28,12 +28,12 @@ def motion_detect_worker(config, camera_config):
                 recorder.record()
 
             motion_detector = MotionDetector(**camera_config.record_config.model_dump(),
-                          name=camera_config.name,
-                          rtsp_url=sub_stream_url,
-                          callback=record)
+                                             name=camera_config.camera_name,
+                                             rtsp_url=sub_stream_url,
+                                             callback=record)
             motion_detector.detect()
         except ConnectionError as e:
-            print(f"camera [{camera_config.name}] connection lost, retrying in 60 seconds...", e)
+            print(f"camera [{camera_config.camera_name}] connection lost, retrying in 60 seconds...", e)
             try:
                 time.sleep(60)
             except KeyboardInterrupt:
@@ -50,7 +50,7 @@ def main():
     config = load_config()
     for camera_config in config.camera_list:
         if not camera_config.enabled:
-            print("camera {} is disabled, skipping...".format(camera_config.name))
+            print("camera {} is disabled, skipping...".format(camera_config.camera_name))
             continue
         t = threading.Thread(target=motion_detect_worker, args=(config, camera_config), daemon=False)
         t.start()
