@@ -1,5 +1,3 @@
-import os
-
 import requests
 from requests.auth import HTTPDigestAuth
 from onvif import ONVIFCamera
@@ -28,6 +26,7 @@ def get_isapi_streams(host, port, username, password):
         auth=HTTPDigestAuth(username, password),
         timeout=5
     )
+    response.raise_for_status()
     xml = response.text
     root = ET.fromstring(xml)
     ns = {'hik': 'http://www.hikvision.com/ver20/XMLSchema'}
@@ -41,8 +40,11 @@ def get_isapi_streams(host, port, username, password):
 def get_streams(host, port, username, password, **_):
     try:
         return get_onvif_streams(host, port, username, password)
-    except:
+    except Exception as onvif_error:
         try:
             return get_isapi_streams(host, port, username, password)
-        except:
-            raise ConnectionError("unable to retrieve RTSP stream URLs using both ONVIF and ISAPI methods")
+        except Exception as isapi_error:
+            raise ConnectionError(
+                f"unable to retrieve RTSP stream URLs: ONVIF failed ({onvif_error}); "
+                f"ISAPI failed ({isapi_error})"
+            ) from isapi_error

@@ -1,5 +1,6 @@
 import os
 import re
+from pathlib import Path
 
 import yaml
 from pydantic import BaseModel
@@ -49,7 +50,8 @@ def _resolve_placeholders(value):
     return value
 
 def load_config():
-    with open("config.yml", "r", encoding="utf-8") as f:
+    config_path = Path(__file__).resolve().parent / "config.yml"
+    with config_path.open("r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     raw = _resolve_placeholders(raw)
     config = BaseConfig(**raw)

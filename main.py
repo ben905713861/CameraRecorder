@@ -12,10 +12,17 @@ def motion_detect_worker(config, camera_config):
     while True:
         try:
             rtsp_streams = get_streams(**camera_config.model_dump())
+            if not rtsp_streams:
+                raise ConnectionError(f"camera [{camera_config.name}] returned no streams")
             main_stream_url = rtsp_streams[0]
-            sub_stream_url = rtsp_streams[1]
+            sub_stream_url = rtsp_streams[1] if len(rtsp_streams) > 1 else main_stream_url
 
-            recorder = Recorder(camera_config.name, main_stream_url, config.output_path)
+            recorder = Recorder(
+                camera_config.name,
+                main_stream_url,
+                config.output_path,
+                record_interval=config.record_interval,
+            )
 
             def record():
                 recorder.record()
