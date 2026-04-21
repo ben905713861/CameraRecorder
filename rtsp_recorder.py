@@ -4,10 +4,10 @@ import shutil
 import subprocess
 import tempfile
 import threading
-import time
 from datetime import datetime
 from pathlib import Path
 from threading import Timer
+
 
 class Recorder:
     def __init__(self, camera_name, rtsp_url, output_path, record_interval=10):
@@ -22,26 +22,37 @@ class Recorder:
         self.is_recording = False
         self.timer = None
 
+        self.exit_event = threading.Event()
+        self.event_time = None
+        self.lock = threading.Lock()
+
         self.temp_dir = os.path.join(tempfile.gettempdir(), "camera", self.camera_name)
         self.__clear_temp_folder()
         os.makedirs(self.temp_dir, exist_ok=True)
 
-        self.background_record_process = None
-        self.__background_record()
-        threading.Thread(target=self.__clear_unused_temp_segments, daemon=True).start()
+        self.background_record_process = self.__background_record()
+        self.clear_thread = self.__clear_unused_temp_segments_process()
 
         # ensure cleanup on exit
         atexit.register(self.cleanup)
 
-        self.event_time = None
-        self.lock = threading.Lock()
+    def __clear_unused_temp_segments_process(self):
+        clear_thread = threading.Thread(target=self.__clear_unused_temp_segments, daemon=True)
+        clear_thread.start()
+        return clear_thread
 
     def __clear_unused_temp_segments(self):
-        while True:
-            time.sleep(60)
-            file_paths = self.__get_temp_dir_filelist()
+        while not self.exit_event.wait(60):
+            try:
+                file_paths = self.__get_temp_dir_filelist()
+                print("__clear_unused_temp_segments, found {} files".format(len(file_paths)))
+            except FileNotFoundError:
+                break
             for file_path in file_paths[50:]:
-                os.remove(file_path)
+                try:
+                    os.remove(file_path)
+                except FileNotFoundError:
+                    continue
 
     def __clear_temp_folder(self):
         if os.path.exists(self.temp_dir):
@@ -58,7 +69,7 @@ class Recorder:
             # "-segment_wrap", "20",
             os.path.join(self.temp_dir, "%09d.ts")
         ]
-        self.background_record_process = subprocess.Popen(
+        return subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
             # stderr=subprocess.PIPE,
@@ -80,14 +91,18 @@ class Recorder:
             # self.ffmpeg_record()
             self.first_segment = self.__get_latest_segment()
             print("first_segment", self.first_segment)
+            if not self.first_segment:
+                print("no segment found, skipping recording...")
+                self.is_recording = False
+                return
 
             self.timer = Timer(self.record_interval, self.__stop_record)
             self.timer.start()
 
-    def __get_latest_segment(self) -> Path:
+    def __get_latest_segment(self) -> Path | None:
         file_paths = self.__get_temp_dir_filelist()
         if len(file_paths) == 0:
-            raise RuntimeError("no segment files found in temp directory")
+            return None
         if len(file_paths) == 1:
             return file_paths[0]
         return file_paths[1]
@@ -115,12 +130,16 @@ class Recorder:
 
     def __compact_videos(self, first_segment, event_time):
         last_segment = self.__get_latest_segment()
+        if not last_segment or not first_segment:
+            print("no segment found, skipping compacting...")
+            return
         print("last_segment", last_segment)
         first_index = int(first_segment.stem)
         last_index = int(last_segment.stem)
         file_list = []
         for i in range(first_index, last_index + 1):
-            file_path = os.path.join(self.temp_dir, f"{i:09d}.ts")
+            output_filename = f"{i:09d}.ts"
+            file_path = os.path.join(self.temp_dir, output_filename)
             file_list.append(f"file '{file_path}'")
         print(file_list)
         if len(file_list) >= 3:
@@ -166,5 +185,8 @@ class Recorder:
 
     def cleanup(self):
         print("[EXIT] cleaning up...")
+        self.exit_event.set()
+        if self.clear_thread.is_alive():
+            self.clear_thread.join(timeout=2)
         self.__stop_background_record()
         self.__clear_temp_folder()
