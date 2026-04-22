@@ -44,15 +44,15 @@ class Recorder:
     def __clear_unused_temp_segments(self):
         while not self.exit_event.wait(60):
             try:
+                if not os.path.exists(self.temp_dir):
+                    os.makedirs(self.temp_dir, exist_ok=True)
                 file_paths = self.__get_temp_dir_filelist()
                 print("__clear_unused_temp_segments, found {} files".format(len(file_paths)))
-            except FileNotFoundError:
-                break
-            for file_path in file_paths[50:]:
-                try:
-                    os.remove(file_path)
-                except FileNotFoundError:
-                    continue
+                for file_path in file_paths[50:]:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+            except (FileNotFoundError, OSError):
+                pass
 
     def __clear_temp_folder(self):
         if os.path.exists(self.temp_dir):
@@ -72,7 +72,8 @@ class Recorder:
         return subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
-            # stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
 
     def record(self):
@@ -170,7 +171,8 @@ class Recorder:
             os.makedirs(os.path.dirname(new_output_file), exist_ok=True)
             shutil.copy(event_output_temp_file, new_output_file)
         finally:
-            shutil.rmtree(event_temp_list_path)
+            if os.path.exists(event_temp_list_path):
+                shutil.rmtree(event_temp_list_path)
 
     def __stop_background_record(self):
         if self.background_record_process:
