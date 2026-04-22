@@ -82,7 +82,7 @@ class Recorder:
                 print("already recording")
                 if self.timer:
                     self.timer.cancel()
-                self.timer = Timer(self.record_interval, self.__stop_record)
+                self.timer = Timer(self.record_interval * 2, self.__stop_record)
                 self.timer.start()
                 return
             print("[INFO] starting recording")
@@ -97,7 +97,7 @@ class Recorder:
                 self.is_recording = False
                 return
 
-            self.timer = Timer(self.record_interval, self.__stop_record)
+            self.timer = Timer(self.record_interval * 2, self.__stop_record)
             self.timer.start()
 
     def __get_latest_segment(self) -> Path | None:
@@ -187,6 +187,7 @@ class Recorder:
 
     def cleanup(self):
         print("[EXIT] cleaning up...")
+        self.timer.cancel()
         self.exit_event.set()
         if self.clear_thread.is_alive():
             self.clear_thread.join(timeout=2)
