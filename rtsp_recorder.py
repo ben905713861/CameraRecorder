@@ -121,56 +121,56 @@ class Recorder:
             if self.timer:
                 self.timer.cancel()
             try:
-                Timer(self.record_interval * 2, self.__compact_videos,
-                      (self.first_segment, self.event_time)
-                ).start()
+                # prepare the segment list for ffmpeg concat
+                last_segment = self.__get_latest_segment()
+                if not last_segment or not self.first_segment:
+                    print("no segment found, skipping compacting...")
+                    return
+                print("last_segment", last_segment)
+                first_index = int(self.first_segment.stem)
+                last_index = int(last_segment.stem)
+                file_list = []
+                for i in range(first_index, last_index + 1):
+                    output_filename = f"{i:09d}.ts"
+                    file_path = os.path.join(self.temp_dir, output_filename)
+                    file_list.append(f"file '{file_path}'")
+                print(file_list)
+                if len(file_list) >= 3:
+                    file_list.pop()
+                self.__compact_videos(file_list)
             finally:
                 print("[INFO] stopped recording")
                 self.is_recording = False
 
-    def __compact_videos(self, first_segment, event_time):
-        last_segment = self.__get_latest_segment()
-        if not last_segment or not first_segment:
-            print("no segment found, skipping compacting...")
-            return
-        print("last_segment", last_segment)
-        first_index = int(first_segment.stem)
-        last_index = int(last_segment.stem)
-        file_list = []
-        for i in range(first_index, last_index + 1):
-            output_filename = f"{i:09d}.ts"
-            file_path = os.path.join(self.temp_dir, output_filename)
-            file_list.append(f"file '{file_path}'")
-        print(file_list)
-        if len(file_list) >= 3:
-            file_list.pop()
-
-        event_temp_list_path = os.path.join(self.temp_dir, event_time.strftime("%Y%m%d_%H%M%S"))
+    def __compact_videos(self, file_list):
+        event_temp_list_path = os.path.join(self.temp_dir, self.event_time.strftime("%Y%m%d_%H%M%S"))
         os.makedirs(event_temp_list_path, exist_ok=True)
         compact_file_list_path = os.path.join(event_temp_list_path, "list.txt")
-        with open(compact_file_list_path, "w", encoding="utf-8") as f:
-            file_content = "\n".join(file_list)
-            f.write(file_content)
-        event_output_temp_file = os.path.join(event_temp_list_path, "event.mp4")
-        command = [
-            "ffmpeg",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", compact_file_list_path,
-            "-c", "copy",
-            event_output_temp_file,
-        ]
-        result = subprocess.run(command, stderr=subprocess.PIPE)
-        if result.returncode != 0:
-            print(result.stderr.decode())
-            return
+        try:
+            with open(compact_file_list_path, "w", encoding="utf-8") as f:
+                file_content = "\n".join(file_list)
+                f.write(file_content)
+            event_output_temp_file = os.path.join(event_temp_list_path, "event.mp4")
+            command = [
+                "ffmpeg",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", compact_file_list_path,
+                "-c", "copy",
+                event_output_temp_file,
+            ]
+            result = subprocess.run(command, stderr=subprocess.PIPE)
+            if result.returncode != 0:
+                print(result.stderr.decode())
+                return
 
-        _date = event_time.strftime("%Y-%m-%d")
-        _time = event_time.strftime("%H-%M-%S")
-        new_output_file = os.path.join(self.output_path, _date, self.camera_name, _time + ".mp4")
-        os.makedirs(os.path.dirname(new_output_file), exist_ok=True)
-        shutil.copy(event_output_temp_file, new_output_file)
-        shutil.rmtree(event_temp_list_path)
+            _date = self.event_time.strftime("%Y-%m-%d")
+            _time = self.event_time.strftime("%H-%M-%S")
+            new_output_file = os.path.join(self.output_path, _date, self.camera_name, _time + ".mp4")
+            os.makedirs(os.path.dirname(new_output_file), exist_ok=True)
+            shutil.copy(event_output_temp_file, new_output_file)
+        finally:
+            shutil.rmtree(event_temp_list_path)
 
     def __stop_background_record(self):
         if self.background_record_process:
