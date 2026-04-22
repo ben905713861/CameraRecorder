@@ -90,7 +90,7 @@ class Recorder:
             self.event_time = datetime.now()
 
             # self.ffmpeg_record()
-            self.first_segment = self.__get_latest_segment()
+            self.first_segment = self.__get_start_segment()
             print("first_segment", self.first_segment)
             if not self.first_segment:
                 print("no segment found, skipping recording...")
@@ -100,13 +100,19 @@ class Recorder:
             self.timer = Timer(self.record_interval * 2, self.__stop_record)
             self.timer.start()
 
-    def __get_latest_segment(self) -> Path | None:
+    def __get_start_segment(self) -> Path | None:
         file_paths = self.__get_temp_dir_filelist()
         if len(file_paths) == 0:
             return None
         if len(file_paths) == 1:
             return file_paths[0]
         return file_paths[1]
+
+    def __get_end_segment(self) -> Path | None:
+        file_paths = self.__get_temp_dir_filelist()
+        if len(file_paths) == 0:
+            return None
+        return file_paths[0]
 
     def __get_temp_dir_filelist(self) -> list[Path]:
         dir_path = Path(self.temp_dir)
@@ -123,7 +129,7 @@ class Recorder:
                 self.timer.cancel()
             try:
                 # prepare the segment list for ffmpeg concat
-                last_segment = self.__get_latest_segment()
+                last_segment = self.__get_end_segment()
                 if not last_segment or not self.first_segment:
                     print("no segment found, skipping compacting...")
                     return
