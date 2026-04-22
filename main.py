@@ -21,7 +21,8 @@ def motion_detect_worker(config, camera_config):
                 camera_config.name,
                 main_stream_url,
                 config.output_path,
-                record_interval=config.record_interval,
+                config.record_interval,
+                config.segment_retain_time,
             )
 
             def record():

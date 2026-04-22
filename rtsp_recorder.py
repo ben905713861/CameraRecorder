@@ -10,11 +10,12 @@ from threading import Timer
 
 
 class Recorder:
-    def __init__(self, camera_name, rtsp_url, output_path, record_interval=10):
+    def __init__(self, camera_name, rtsp_url, output_path, record_interval, segment_retain_time):
         if output_path is None:
             raise ValueError("output_path variable is not set")
         self.output_path = output_path
         self.record_interval = record_interval
+        self.segment_retain_time = segment_retain_time
         self.camera_name = camera_name
         self.rtsp_url = rtsp_url
 
@@ -42,13 +43,14 @@ class Recorder:
         return clear_thread
 
     def __clear_unused_temp_segments(self):
+        retain_number = self.segment_retain_time / self.record_interval
         while not self.exit_event.wait(60):
             try:
                 if not os.path.exists(self.temp_dir):
                     os.makedirs(self.temp_dir, exist_ok=True)
                 file_paths = self.__get_temp_dir_filelist()
                 print("__clear_unused_temp_segments, found {} files".format(len(file_paths)))
-                for file_path in file_paths[50:]:
+                for file_path in file_paths[retain_number:]:
                     if os.path.exists(file_path):
                         os.remove(file_path)
             except (FileNotFoundError, OSError):

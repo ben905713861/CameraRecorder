@@ -1,5 +1,6 @@
 output_path: "e:/Desktop"
-record_interval: 4
+record_interval: 4 # 每段录像的时长，单位秒
+segment_retain_time: 600 # 历史分片最大保留时长，单位秒
 camera_list:
 #  - name: "gate"
 #    host: "192.168.1.10"

@@ -8,7 +8,6 @@ from pydantic import BaseModel
 PLACEHOLDER_PATTERN = re.compile(r"\$\{([A-Za-z_]\w*)(?::([^}]*))?}")
 
 class RecordConfig(BaseModel):
-    # enabled: bool = True
     pixel_threshold: int = 25  # 像素差异阈值
     motion_ratio_threshold: float = 0.02  # 像素变化比例阈值（2%）
     alert_interval: int = 5  # 告警间隔（秒）
@@ -25,7 +24,8 @@ class CameraConfig(BaseModel):
 
 class BaseConfig(BaseModel):
     output_path: str
-    record_interval: int
+    record_interval: int = 4
+    segment_retain_time: int = 60 * 5
     camera_list: list[CameraConfig]
 
 def _resolve_placeholders(value):
