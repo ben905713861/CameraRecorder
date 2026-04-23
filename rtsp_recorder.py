@@ -43,7 +43,7 @@ class Recorder:
         return clear_thread
 
     def __clear_unused_temp_segments(self):
-        retain_number = self.segment_retain_time / self.record_interval
+        retain_number = int(self.segment_retain_time / self.record_interval)
         while not self.exit_event.wait(60):
             try:
                 if not os.path.exists(self.temp_dir):
