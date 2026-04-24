@@ -69,7 +69,9 @@ class Recorder:
             "-f", "segment",
             "-segment_time", str(self.record_interval),
             # "-segment_wrap", "20",
-            os.path.join(self.temp_dir, "%09d.ts")
+            "-segment_format", "matroska",
+            "-reset_timestamps", "1",
+            os.path.join(self.temp_dir, "%09d.mkv")
         ]
         return subprocess.Popen(
             command,
@@ -140,7 +142,7 @@ class Recorder:
                 last_index = int(last_segment.stem)
                 file_list = []
                 for i in range(first_index, last_index + 1):
-                    output_filename = f"{i:09d}.ts"
+                    output_filename = f"{i:09d}.mkv"
                     file_path = os.path.join(self.temp_dir, output_filename)
                     file_list.append(f"file '{file_path}'")
                 print(file_list)
@@ -159,7 +161,7 @@ class Recorder:
             with open(compact_file_list_path, "w", encoding="utf-8") as f:
                 file_content = "\n".join(file_list)
                 f.write(file_content)
-            event_output_temp_file = os.path.join(event_temp_list_path, "event.mp4")
+            event_output_temp_file = os.path.join(event_temp_list_path, "event.mkv")
             command = [
                 "ffmpeg",
                 "-f", "concat",
@@ -175,7 +177,7 @@ class Recorder:
 
             _date = self.event_time.strftime("%Y-%m-%d")
             _time = self.event_time.strftime("%H-%M-%S")
-            new_output_file = os.path.join(self.output_path, _date, self.camera_name, _time + ".mp4")
+            new_output_file = os.path.join(self.output_path, _date, self.camera_name, _time + ".mkv")
             os.makedirs(os.path.dirname(new_output_file), exist_ok=True)
             shutil.copy(event_output_temp_file, new_output_file)
         finally:
