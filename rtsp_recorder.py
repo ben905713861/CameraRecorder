@@ -64,6 +64,8 @@ class Recorder:
         command = [
             "ffmpeg",
             "-rtsp_transport", "tcp",
+            "-fflags", "+genpts",
+            "-use_wallclock_as_timestamps", "1",
             "-i", self.rtsp_url,
             "-c", "copy",
             "-f", "segment",
