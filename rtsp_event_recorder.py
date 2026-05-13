@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Timer
 
 
-class Recorder:
+class EventRecorder:
     def __init__(self, camera_name, rtsp_url, output_path, record_interval, segment_retain_time):
         if output_path is None:
             raise ValueError("output_path variable is not set")
@@ -195,11 +195,13 @@ class Recorder:
             except Exception:
                 self.background_record_process.kill()
             finally:
-                print("[INFO] stopped background recording")
+                self.background_record_process = None
+                print("[INFO] EventRecorder stopped background recording")
 
     def cleanup(self):
         print("[EXIT] cleaning up...")
-        self.timer.cancel()
+        if self.timer:
+            self.timer.cancel()
         self.exit_event.set()
         if self.clear_thread.is_alive():
             self.clear_thread.join(timeout=2)

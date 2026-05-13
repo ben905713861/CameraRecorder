@@ -8,7 +8,7 @@ camera_list:
 #    username: "admin"
 #    password: ${ONVIF_PASSWORD}
 #    enabled: true
-#    record_config:
+#    record_configs:
 #      pixel_threshold: 25  # 像素差异阈值
 #      motion_ratio_threshold: 0.02  # 像素变化比例阈值（2%）
 #      alert_interval: 5  # 告警间隔（秒）
@@ -19,7 +19,7 @@ camera_list:
 #    username: "admin"
 #    password: ${ONVIF_PASSWORD}
 #    enabled: true
-#    record_config:
+#    record_configs:
 #      pixel_threshold: 25  # 像素差异阈值
 #      motion_ratio_threshold: 0.02  # 像素变化比例阈值（2%）
 #      alert_interval: 5  # 告警间隔（秒）
@@ -30,7 +30,7 @@ camera_list:
 #    username: "admin"
 #    password: ${ONVIF_PASSWORD}
 #    enabled: true
-#    record_config:
+#    record_configs:
 #      pixel_threshold: 25  # 像素差异阈值
 #      motion_ratio_threshold: 0.02  # 像素变化比例阈值（2%）
 #      alert_interval: 5  # 告警间隔（秒）
@@ -41,7 +41,7 @@ camera_list:
 #    username: "admin"
 #    password: ${ONVIF_PASSWORD}
 #    enabled: true
-#    record_config:
+#    record_configs:
 #      pixel_threshold: 25  # 像素差异阈值
 #      motion_ratio_threshold: 0.02  # 像素变化比例阈值（2%）
 #      alert_interval: 5  # 告警间隔（秒）
@@ -52,8 +52,17 @@ camera_list:
     username: "admin"
     password: ${ONVIF_PASSWORD}
     enabled: true
-    record_config:
-      pixel_threshold: 25  # 像素差异阈值
-      motion_ratio_threshold: 0.02  # 像素变化比例阈值（2%）
-      alert_interval: 1  # 告警间隔（秒）
-      frame_skip: 5  # 跳帧间隔
+    record_configs:
+      - type: "event"
+        scheduler:
+          - "14:00-18:00"
+          - "23:00-23:59"
+        pixel_threshold: 25  # 像素差异阈值
+        motion_ratio_threshold: 0.02  # 像素变化比例阈值（2%）
+        alert_interval: 1  # 告警间隔（秒）
+        frame_skip: 5  # 跳帧间隔
+#      - type: "timing"
+#        scheduler:
+#          - "14:00-18:00"
+#          - "21:00-23:59"
+

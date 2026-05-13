@@ -4,17 +4,16 @@ import subprocess
 import threading
 from datetime import datetime, timedelta
 
-import cv2
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 
 class TimingRecorder:
-    def __init__(self, camera_name, rtsp_url, output_path, time_ranges: list[str]):
+    def __init__(self, name, rtsp_url, output_path, time_ranges: list[str]):
         if output_path is None:
             raise ValueError("output_path variable is not set")
         self.output_path = output_path
-        self.camera_name = camera_name
+        self.name = name
         self.rtsp_url = rtsp_url
         self.time_ranges = time_ranges
 
@@ -29,6 +28,7 @@ class TimingRecorder:
         atexit.register(self.cleanup)
 
     def start(self):
+        print("TimingRecorder for camera [{}] starts successfully".format(self.name))
         self.__create_output_folder()
         self.__create_output_folder(timedelta_hours=1)
         self.__start_timer()
@@ -36,30 +36,20 @@ class TimingRecorder:
 
     def __ensure_recording_state(self):
         while not self.exit_event.wait(60):
-            should_record_now = self.__should_record_now()
-            is_ffmpeg_running = self.record_process is not None and self.record_process.poll() is None
-            is_rtsp_connection_live = self.__rtsp_alive()
-
-            if should_record_now:
-                if is_rtsp_connection_live:
+            with self.lock:
+                should_record_now = self.__should_record_now()
+                if should_record_now:
+                    is_ffmpeg_running = self.record_process is not None and self.record_process.poll() is None
                     if not is_ffmpeg_running:
-                        print("starting recording...")
+                        print("bring up recording...")
                         self.__background_record()
-                else:
-                    print("rtsp connection is not live, stopping recording if needed...")
-                    if is_ffmpeg_running:
-                        self.__stop_record()
-            else:
-                if is_ffmpeg_running:
-                    print("stopping recording...")
-                    self.__stop_record()
 
     def __get_time_range_objects(self):
         time_range_list = []
         for time_range in self.time_ranges:
             _start_time, _end_time = time_range.split("-")
-            start_time = datetime.strptime(_start_time, "%H:%M:%S").time()
-            end_time = datetime.strptime(_end_time, "%H:%M:%S").time()
+            start_time = datetime.strptime(_start_time, "%H:%M").time()
+            end_time = datetime.strptime(_end_time, "%H:%M").time()
             if start_time >= end_time:
                 raise ValueError("start_time must be less than end_time")
             for existing_time_range in time_range_list:
@@ -101,49 +91,10 @@ class TimingRecorder:
                 return True
         return False
 
-    def __rtsp_connect_detect(self):
-        cap = None
-        try:
-            cap = cv2.VideoCapture(self.rtsp_url)
-            return cap.isOpened()
-        except Exception as e:
-            print("rtsp connection error:", e)
-            return False
-        finally:
-            if cap:
-                cap.release()
-
     def __create_output_folder(self, timedelta_hours=0):
         now = datetime.now() + timedelta(hours=timedelta_hours)
-        output_folder = os.path.join(self.output_path, now.strftime("%Y-%m-%d"), self.camera_name)
+        output_folder = os.path.join(self.output_path, now.strftime("%Y-%m-%d"), self.name)
         os.makedirs(output_folder, exist_ok=True)
-
-    def __rtsp_alive(self, timeout_sec: int = 4) -> bool:
-        cmd = [
-            "ffprobe",
-            "-v", "error",
-            "-rtsp_transport", "tcp",
-            "-timeout", "3000000",  # 3s, 微秒
-            "-select_streams", "v:0",
-            "-show_entries", "stream=codec_type",
-            "-of", "default=nw=1:nk=1",
-            self.rtsp_url,
-        ]
-        try:
-            r = subprocess.run(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=timeout_sec,
-                check=False,
-            )
-            return r.returncode == 0
-        except subprocess.TimeoutExpired as e:
-            print("rtsp connection check timeout:", e)
-            return False
-        except Exception as e:
-            print("rtsp connection check error:", e)
-            return False
 
     def __background_record(self):
         with self.lock:
@@ -154,6 +105,7 @@ class TimingRecorder:
                 command = [
                     "ffmpeg",
                     "-rtsp_transport", "tcp",
+                    "-timeout", "5000000",  # 5s, 微秒
                     "-fflags", "+genpts",
                     "-use_wallclock_as_timestamps", "1",
                     "-i", self.rtsp_url,
@@ -164,7 +116,7 @@ class TimingRecorder:
                     "-segment_atclocktime", "1",
                     "-reset_timestamps", "1",
                     "-strftime", "1",
-                    os.path.join(self.output_path, "%Y-%m-%d/" + self.camera_name +"/%H-%M.mkv")
+                    os.path.join(self.output_path, "%Y-%m-%d/" + self.name + "/%H-%M-%S.mkv")
                 ]
                 self.record_process = subprocess.Popen(
                     command,

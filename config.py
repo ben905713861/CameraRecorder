@@ -8,6 +8,8 @@ from pydantic import BaseModel
 PLACEHOLDER_PATTERN = re.compile(r"\$\{([A-Za-z_]\w*)(?::([^}]*))?}")
 
 class RecordConfig(BaseModel):
+    type: str  # "timing" 或 "event"
+    scheduler: list[str] = []  # 定时录制的时间段列表，格式为 ["HH:MM-HH:MM", ...]
     pixel_threshold: int = 25  # 像素差异阈值
     motion_ratio_threshold: float = 0.02  # 像素变化比例阈值（2%）
     alert_interval: int = 5  # 告警间隔（秒）
@@ -20,7 +22,7 @@ class CameraConfig(BaseModel):
     username: str = "admin"
     password: str = ""
     enabled: bool = True
-    record_config: RecordConfig
+    record_configs: list[RecordConfig]
 
 class BaseConfig(BaseModel):
     output_path: str
