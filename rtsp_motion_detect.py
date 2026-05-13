@@ -40,7 +40,7 @@ class MotionDetector:
 
         raise ConnectionError("unable to connect to RTSP stream")
 
-    def detect(self):
+    def detect(self, stop_event=None):
         self.__connect()
 
         frame_count = 0
@@ -49,6 +49,10 @@ class MotionDetector:
         print(f"starting motion detection on camera [{self.name}] (optimized anti-light-change)...")
 
         while True:
+            if stop_event is not None and stop_event.is_set():
+                if self.cap is not None:
+                    self.cap.release()
+                return
             ret, frame = self.cap.read()
             if not ret:
                 self.cap.release()

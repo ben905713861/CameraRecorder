@@ -10,14 +10,12 @@ from rtsp_timing_recorder import TimingRecorder
 
 def motion_detect_worker(config, camera_config, record_config):
     recorder = None
+    rtsp_streams = get_rtsp_streams(camera_config)
+    main_stream_url = rtsp_streams[0]
+    sub_stream_url = rtsp_streams[1] if len(rtsp_streams) > 1 else main_stream_url
+
     while True:
         try:
-            rtsp_streams = get_streams(**camera_config.model_dump())
-            if not rtsp_streams:
-                raise ConnectionError(f"camera [{camera_config.name}] returned no streams")
-            main_stream_url = rtsp_streams[0]
-            sub_stream_url = rtsp_streams[1] if len(rtsp_streams) > 1 else main_stream_url
-
             recorder = EventRecorder(
                 camera_config.name,
                 main_stream_url,
@@ -51,11 +49,23 @@ def motion_detect_worker(config, camera_config, record_config):
                 recorder.cleanup()
                 recorder = None
 
+
+def get_rtsp_streams(camera_config) -> list[str]:
+    while True:
+        try:
+            rtsp_streams = get_streams(**camera_config.model_dump())
+            return rtsp_streams
+        except ConnectionError as e:
+            print(f"camera [{camera_config.name}] connection lost, retrying in 60 seconds...", e)
+            try:
+                time.sleep(60)
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt, exiting...")
+                break
+
 def timer_record_worker(config, camera_config, record_config):
     print("timer_record_worker starts successfully")
-    rtsp_streams = get_streams(**camera_config.model_dump())
-    if not rtsp_streams:
-        raise ConnectionError(f"camera [{camera_config.name}] returned no streams")
+    rtsp_streams = get_rtsp_streams(camera_config)
     main_stream_url = rtsp_streams[0]
     TimingRecorder(name=camera_config.name,
                    rtsp_url=main_stream_url,
@@ -64,11 +74,11 @@ def timer_record_worker(config, camera_config, record_config):
 
 def main():
     config = load_config()
+    threads = []
     for camera_config in config.camera_list:
         if not camera_config.enabled:
             print("camera {} is disabled, skipping...".format(camera_config.name))
             continue
-        threads = []
         for record_config in camera_config.record_configs:
             if record_config.type == "event":
                 thread = threading.Thread(target=motion_detect_worker, args=(config, camera_config, record_config), daemon=False)
@@ -78,8 +88,8 @@ def main():
                 raise ValueError(f"unsupported record type [{record_config.type}] for camera [{camera_config.name}]")
             thread.start()
             threads.append(thread)
-        # for thread in threads:
-        #     thread.join()
+    for thread in threads:
+        thread.join()
 
 if __name__ == '__main__':
     main()
