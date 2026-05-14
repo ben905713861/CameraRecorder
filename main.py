@@ -11,10 +11,12 @@ from rtsp_timing_recorder import TimingRecorder
 def motion_detect_worker(config, camera_config, record_config):
     recorder = None
     rtsp_streams = get_rtsp_streams(camera_config)
+    if len(rtsp_streams) == 0:
+        return
     main_stream_url = rtsp_streams[0]
     sub_stream_url = rtsp_streams[1] if len(rtsp_streams) > 1 else main_stream_url
 
-    while True:
+    while not exit_event.wait(60):
         try:
             recorder = EventRecorder(
                 camera_config.name,
@@ -22,6 +24,7 @@ def motion_detect_worker(config, camera_config, record_config):
                 config.output_path,
                 config.record_interval,
                 config.segment_retain_time,
+                exit_event
             )
 
             def record():
@@ -37,13 +40,6 @@ def motion_detect_worker(config, camera_config, record_config):
             motion_detector.detect()
         except ConnectionError as e:
             print(f"camera [{camera_config.name}] connection lost, retrying in 60 seconds...", e)
-            try:
-                time.sleep(60)
-            except KeyboardInterrupt:
-                print("KeyboardInterrupt, exiting...")
-                if recorder:
-                    recorder.cleanup()
-                break
         finally:
             if recorder:
                 recorder.cleanup()
@@ -57,20 +53,22 @@ def get_rtsp_streams(camera_config) -> list[str]:
             return rtsp_streams
         except ConnectionError as e:
             print(f"camera [{camera_config.name}] connection lost, retrying in 60 seconds...", e)
-            try:
-                time.sleep(60)
-            except KeyboardInterrupt:
-                print("KeyboardInterrupt, exiting...")
-                break
+        if exit_event.wait(60):
+            break
+    print("get_rtsp_streams exit due to KeyboardInterrupt")
+    return []
 
 def timer_record_worker(config, camera_config, record_config):
     print("timer_record_worker starts successfully")
     rtsp_streams = get_rtsp_streams(camera_config)
+    if len(rtsp_streams) == 0:
+        return
     main_stream_url = rtsp_streams[0]
     TimingRecorder(name=camera_config.name,
                    rtsp_url=main_stream_url,
                    output_path=config.output_path,
-                   time_ranges=record_config.scheduler).start()
+                   time_ranges=record_config.scheduler,
+                   exit_event=exit_event).start()
 
 def main():
     config = load_config()
@@ -81,15 +79,22 @@ def main():
             continue
         for record_config in camera_config.record_configs:
             if record_config.type == "event":
-                thread = threading.Thread(target=motion_detect_worker, args=(config, camera_config, record_config), daemon=False)
+                thread = threading.Thread(target=motion_detect_worker, args=(config, camera_config, record_config), daemon=True)
             elif record_config.type == "timing":
-                thread = threading.Thread(target=timer_record_worker, args=(config, camera_config, record_config), daemon=False)
+                thread = threading.Thread(target=timer_record_worker, args=(config, camera_config, record_config), daemon=True)
             else:
                 raise ValueError(f"unsupported record type [{record_config.type}] for camera [{camera_config.name}]")
             thread.start()
             threads.append(thread)
+    try:
+        exit_event.wait()
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt, exiting...")
+        exit_event.set()
     for thread in threads:
         thread.join()
+        print("thread joined successfully")
 
 if __name__ == '__main__':
+    exit_event = threading.Event()
     main()

@@ -10,7 +10,7 @@ from threading import Timer
 
 
 class EventRecorder:
-    def __init__(self, camera_name, rtsp_url, output_path, record_interval, segment_retain_time):
+    def __init__(self, camera_name, rtsp_url, output_path, record_interval, segment_retain_time, exit_event):
         if output_path is None:
             raise ValueError("output_path variable is not set")
         self.output_path = output_path
@@ -23,7 +23,7 @@ class EventRecorder:
         self.is_recording = False
         self.timer = None
 
-        self.exit_event = threading.Event()
+        self.exit_event = exit_event
         self.event_time = None
         self.lock = threading.Lock()
 
@@ -202,7 +202,6 @@ class EventRecorder:
         print("[EXIT] cleaning up...")
         if self.timer:
             self.timer.cancel()
-        self.exit_event.set()
         if self.clear_thread.is_alive():
             self.clear_thread.join(timeout=2)
         self.__stop_background_record()

@@ -1,5 +1,4 @@
-﻿import atexit
-import os
+﻿import os
 import subprocess
 import threading
 from datetime import datetime, timedelta
@@ -9,7 +8,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 
 class TimingRecorder:
-    def __init__(self, name, rtsp_url, output_path, time_ranges: list[str]):
+    def __init__(self, name, rtsp_url, output_path, time_ranges: list[str], exit_event):
         if output_path is None:
             raise ValueError("output_path variable is not set")
         self.output_path = output_path
@@ -20,12 +19,9 @@ class TimingRecorder:
         self.scheduler = BackgroundScheduler()
         self.record_process = None
         self.lock = threading.RLock()
-        self.exit_event = threading.Event()
+        self.exit_event = exit_event
 
         self.time_range_objects = self.__get_time_range_objects()
-
-        # ensure cleanup on exit
-        atexit.register(self.cleanup)
 
     def start(self):
         print("TimingRecorder for camera [{}] starts successfully".format(self.name))
@@ -33,9 +29,10 @@ class TimingRecorder:
         self.__create_output_folder(timedelta_hours=1)
         self.__start_timer()
         self.__ensure_recording_state()
+        self.cleanup()
 
     def __ensure_recording_state(self):
-        while not self.exit_event.wait(60):
+        while True:
             with self.lock:
                 should_record_now = self.__should_record_now()
                 if should_record_now:
@@ -43,6 +40,8 @@ class TimingRecorder:
                     if not is_ffmpeg_running:
                         print("bring up recording...")
                         self.__background_record()
+            if self.exit_event.wait(30):
+                break
 
     def __get_time_range_objects(self):
         time_range_list = []
@@ -78,7 +77,7 @@ class TimingRecorder:
             )
         self.scheduler.add_job(
             self.__create_output_folder,
-            CronTrigger.from_crontab("0 * * * *"),
+            CronTrigger.from_crontab("59 * * * *"),
             args=[1],
         )
         self.scheduler.start()
@@ -142,8 +141,7 @@ class TimingRecorder:
                     print("[INFO] stopped background recording")
 
     def cleanup(self):
-        print("[EXIT] cleaning up...")
-        self.exit_event.set()
+        print("[EXIT] TimingRecorder cleaning up...")
         self.__stop_record()
         if self.scheduler.running:
             self.scheduler.shutdown(wait=False)
