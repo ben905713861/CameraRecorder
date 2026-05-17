@@ -1,5 +1,4 @@
 import threading
-import time
 
 from camera_urls import get_streams
 from config import load_config
@@ -16,35 +15,28 @@ def motion_detect_worker(config, camera_config, record_config):
     main_stream_url = rtsp_streams[0]
     sub_stream_url = rtsp_streams[1] if len(rtsp_streams) > 1 else main_stream_url
 
-    while not exit_event.wait(60):
-        try:
-            recorder = EventRecorder(
-                camera_config.name,
-                main_stream_url,
-                config.output_path,
-                config.record_interval,
-                config.segment_retain_time,
-                exit_event
-            )
+    recorder = EventRecorder(
+        camera_config.name,
+        main_stream_url,
+        config.output_path,
+        config.record_interval,
+        config.segment_retain_time,
+        exit_event
+    )
 
-            def record():
-                recorder.record()
+    def record():
+        recorder.record()
 
-            motion_detector = MotionDetector(rtsp_url=sub_stream_url,
-                                             name=camera_config.name,
-                                             pixel_threshold=record_config.pixel_threshold,
-                                             motion_ratio_threshold=record_config.motion_ratio_threshold,
-                                             alert_interval=record_config.alert_interval,
-                                             frame_skip=record_config.frame_skip,
-                                             callback=record)
-            motion_detector.detect()
-        except ConnectionError as e:
-            print(f"camera [{camera_config.name}] connection lost, retrying in 60 seconds...", e)
-        finally:
-            if recorder:
-                recorder.cleanup()
-                recorder = None
-
+    motion_detector = MotionDetector(rtsp_url=sub_stream_url,
+                                     name=camera_config.name,
+                                     exit_event=exit_event,
+                                     pixel_threshold=record_config.pixel_threshold,
+                                     motion_ratio_threshold=record_config.motion_ratio_threshold,
+                                     alert_interval=record_config.alert_interval,
+                                     frame_skip=record_config.frame_skip,
+                                     callback=record)
+    recorder.start()
+    motion_detector.detect()
 
 def get_rtsp_streams(camera_config) -> list[str]:
     while True:

@@ -7,6 +7,7 @@ class MotionDetector:
     def __init__(self,
                  rtsp_url,
                  name,
+                 exit_event,
                  pixel_threshold=25,
                  motion_ratio_threshold=0.02,
                  alert_interval=10,
@@ -26,21 +27,26 @@ class MotionDetector:
         self.cap = None
         self.prev_gray = None
         self.callback = callback
+        self.exit_event = exit_event
 
         # 连续帧计数（用于过滤瞬时变化）
         self.motion_frames = 0
 
     def __connect(self):
-        self.cap = cv2.VideoCapture(self.rtsp_url)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+        print("connecting to RTSP stream [{}]...".format(self.rtsp_url))
+        while True:
+            self.cap = cv2.VideoCapture(self.rtsp_url)
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
 
-        if self.cap.isOpened():
-            print("connect to RTSP stream successfully")
-            return
+            if self.cap.isOpened():
+                print("connect to RTSP stream successfully")
+                return
 
-        raise ConnectionError("unable to connect to RTSP stream")
+            if self.exit_event.wait(60):
+                print("receive exit instruction, stop waiting for rtsp connecting, exit detect ...")
+                return
 
-    def detect(self, stop_event=None):
+    def detect(self):
         self.__connect()
 
         frame_count = 0
@@ -48,15 +54,16 @@ class MotionDetector:
 
         print(f"starting motion detection on camera [{self.name}] (optimized anti-light-change)...")
 
-        while True:
-            if stop_event is not None and stop_event.is_set():
-                if self.cap is not None:
-                    self.cap.release()
-                return
+        while not self.exit_event.is_set():
             ret, frame = self.cap.read()
             if not ret:
                 self.cap.release()
-                raise ConnectionError("video stream interrupted")
+                if self.exit_event.wait(60):
+                    print("receive exit instruction, stop waiting for rtsp reconnecting, exit detect ...")
+                    return
+                print("RTSP stream read failed, retrying connection...")
+                self.__connect()
+                continue
 
             # === 跳帧 ===
             frame_count += 1
@@ -154,3 +161,7 @@ class MotionDetector:
 
             # 更新上一帧
             self.prev_gray = gray
+
+        print(f"motion detection on camera [{self.name}] stopped")
+        if self.cap is not None:
+            self.cap.release()

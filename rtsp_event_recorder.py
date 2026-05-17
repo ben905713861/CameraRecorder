@@ -31,16 +31,15 @@ class EventRecorder:
         self.__clear_temp_folder()
         os.makedirs(self.temp_dir, exist_ok=True)
 
-        self.background_record_process = self.__background_record()
-        self.clear_thread = self.__clear_unused_temp_segments_process()
+        self.clear_thread = None
 
-        # ensure cleanup on exit
-        atexit.register(self.cleanup)
+    def start(self):
+        self.__clear_unused_temp_segments_process()
+        self.__background_record_process()
 
     def __clear_unused_temp_segments_process(self):
-        clear_thread = threading.Thread(target=self.__clear_unused_temp_segments, daemon=True)
-        clear_thread.start()
-        return clear_thread
+        self.clear_thread = threading.Thread(target=self.__clear_unused_temp_segments, daemon=False)
+        self.clear_thread.start()
 
     def __clear_unused_temp_segments(self):
         retain_number = int(self.segment_retain_time / self.record_interval)
@@ -55,32 +54,54 @@ class EventRecorder:
                         os.remove(file_path)
             except (FileNotFoundError, OSError):
                 pass
+        print("receive exit instruction, stop __clear_unused_temp_segments_process...")
 
     def __clear_temp_folder(self):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
+    def __background_record_process(self):
+        self.background_record_thread = threading.Thread(target=self.__background_record, daemon=False)
+        self.background_record_thread.start()
+
     def __background_record(self):
-        command = [
-            "ffmpeg",
-            "-rtsp_transport", "tcp",
-            "-fflags", "+genpts",
-            "-use_wallclock_as_timestamps", "1",
-            "-i", self.rtsp_url,
-            "-c", "copy",
-            "-f", "segment",
-            "-segment_time", str(self.record_interval),
-            # "-segment_wrap", "20",
-            "-segment_format", "matroska",
-            "-reset_timestamps", "1",
-            os.path.join(self.temp_dir, "%09d.mkv")
-        ]
-        return subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        while True:
+            try:
+                command = [
+                    "ffmpeg",
+                    "-rtsp_transport", "tcp",
+                    "-timeout", "5000000",  # 5s, 微秒
+                    "-fflags", "+genpts",
+                    "-use_wallclock_as_timestamps", "1",
+                    "-i", self.rtsp_url,
+                    "-c", "copy",
+                    "-f", "segment",
+                    "-segment_time", str(self.record_interval),
+                    # "-segment_wrap", "20",
+                    "-segment_format", "matroska",
+                    "-reset_timestamps", "1",
+                    os.path.join(self.temp_dir, "%09d.mkv")
+                ]
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                for line in process.stderr:
+                    if not line.startswith("frame="):
+                        print(line, end="")
+                    if self.exit_event.is_set():
+                        print("receive exit instruction, stop ffmpeg printing...")
+                        self.__stop_process(process)
+                        process.wait()
+                        print("ffmpeg exit code", process.returncode)
+                        return
+            except Exception as e:
+                print("ffmpeg recording process error:", e)
+                if self.exit_event.wait(60):
+                    print("receive exit instruction, stop retrying to start ffmpeg...")
+                    return
 
     def record(self):
         with self.lock:
@@ -186,23 +207,22 @@ class EventRecorder:
             if os.path.exists(event_temp_list_path):
                 shutil.rmtree(event_temp_list_path)
 
-    def __stop_background_record(self):
-        if self.background_record_process:
-            try:
-                self.background_record_process.stdin.write(b"q")
-                self.background_record_process.stdin.flush()
-                self.background_record_process.wait(timeout=10)
-            except Exception:
-                self.background_record_process.kill()
-            finally:
-                self.background_record_process = None
-                print("[INFO] EventRecorder stopped background recording")
+    def __stop_process(self, process):
+        try:
+            process.stdin.write(b"q")
+            process.stdin.flush()
+            process.wait(timeout=10)
+        except Exception:
+            process.kill()
+        finally:
+            print("[INFO] EventRecorder stopped background recording")
 
     def cleanup(self):
-        print("[EXIT] cleaning up...")
+        print("[EXIT] EventRecorder cleaning up...")
         if self.timer:
             self.timer.cancel()
         if self.clear_thread.is_alive():
-            self.clear_thread.join(timeout=2)
-        self.__stop_background_record()
+            self.clear_thread.join(timeout=60)
+        if self.background_record_thread.is_alive():
+            self.background_record_thread.join(timeout=60)
         self.__clear_temp_folder()
