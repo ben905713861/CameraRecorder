@@ -1,6 +1,11 @@
 import threading
-import cv2
 import time
+from datetime import datetime
+
+import cv2
+from apscheduler.schedulers.background import BackgroundScheduler
+
+from rtsp_timing_recorder import get_time_range_objects
 
 
 class MotionDetector:
@@ -8,6 +13,7 @@ class MotionDetector:
                  rtsp_url,
                  name,
                  exit_event,
+                 time_ranges: list[str]=[],
                  pixel_threshold=25,
                  motion_ratio_threshold=0.02,
                  alert_interval=10,
@@ -16,6 +22,7 @@ class MotionDetector:
 
         self.rtsp_url = rtsp_url
         self.name = name
+        self.time_ranges = time_ranges
         self.pixel_threshold = pixel_threshold
         self.motion_ratio_threshold = motion_ratio_threshold
         self.alert_interval = alert_interval
@@ -28,9 +35,14 @@ class MotionDetector:
         self.prev_gray = None
         self.callback = callback
         self.exit_event = exit_event
+        self.stop_signal = threading.Event()
 
         # 连续帧计数（用于过滤瞬时变化）
         self.motion_frames = 0
+
+        self.scheduler = BackgroundScheduler()
+        self.time_range_objects = get_time_range_objects(self.time_ranges)
+        self.lock = threading.RLock()
 
     def __connect(self):
         print("connecting to RTSP stream [{}]...".format(self.rtsp_url))
@@ -46,7 +58,48 @@ class MotionDetector:
                 print("receive exit instruction, stop waiting for rtsp connecting, exit detect ...")
                 return
 
-    def detect(self):
+    def __should_record_now(self):
+        if self.time_range_objects is None or len(self.time_range_objects) == 0:
+            return True
+        now = datetime.now().time()
+        for time_range in self.time_range_objects:
+            start_time, end_time = time_range
+            if start_time <= now < end_time:
+                return True
+        return False
+
+    def __start_timer(self):
+        for time_range_object in self.time_range_objects:
+            start_time, end_time = time_range_object
+            self.scheduler.add_job(
+                self.__start_detect,
+                trigger='cron',
+                hour=start_time.hour,
+                minute=start_time.minute,
+                second=start_time.second,
+            )
+            self.scheduler.add_job(
+                self.__stop_detect,
+                'cron',
+                hour=end_time.hour,
+                minute=end_time.minute,
+                second=end_time.second,
+            )
+        self.scheduler.start()
+
+    def start(self):
+        self.__start_timer()
+        should_record_now = self.__should_record_now()
+        if should_record_now:
+            self.__start_detect()
+        self.__background_detect()
+        self.cleanup()
+
+    def __start_detect(self):
+        with self.lock:
+            self.stop_signal.clear()
+
+    def __background_detect(self):
         self.__connect()
 
         frame_count = 0
@@ -55,6 +108,9 @@ class MotionDetector:
         print(f"starting motion detection on camera [{self.name}] (optimized anti-light-change)...")
 
         while not self.exit_event.is_set():
+            if self.stop_signal.is_set():
+                print("receive exit instruction, stop motion detect ...")
+                break
             ret, frame = self.cap.read()
             if not ret:
                 self.cap.release()
@@ -165,3 +221,14 @@ class MotionDetector:
         print(f"motion detection on camera [{self.name}] stopped")
         if self.cap is not None:
             self.cap.release()
+
+    def __stop_detect(self):
+        with self.lock:
+            print("execute stop_detect, stop motion detect ...")
+            self.stop_signal.set()
+
+    def cleanup(self):
+        print("[EXIT] MotionDetector cleaning up...")
+        self.__stop_detect()
+        if self.scheduler.running:
+            self.scheduler.shutdown(wait=False)

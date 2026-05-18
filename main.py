@@ -29,6 +29,7 @@ def motion_detect_worker(config, camera_config, record_config):
 
     motion_detector = MotionDetector(rtsp_url=sub_stream_url,
                                      name=camera_config.name,
+                                     time_ranges=record_config.scheduler,
                                      exit_event=exit_event,
                                      pixel_threshold=record_config.pixel_threshold,
                                      motion_ratio_threshold=record_config.motion_ratio_threshold,
@@ -36,7 +37,7 @@ def motion_detect_worker(config, camera_config, record_config):
                                      frame_skip=record_config.frame_skip,
                                      callback=record)
     recorder.start()
-    motion_detector.detect()
+    motion_detector.start()
 
 def get_rtsp_streams(camera_config) -> list[str]:
     while True:

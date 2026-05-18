@@ -7,6 +7,22 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 
+def get_time_range_objects(time_ranges):
+    time_range_list = []
+    for time_range in time_ranges:
+        _start_time, _end_time = time_range.split("-")
+        start_time = datetime.strptime(_start_time, "%H:%M").time()
+        end_time = datetime.strptime(_end_time, "%H:%M").time()
+        if start_time >= end_time:
+            raise ValueError("start_time must be less than end_time")
+        for existing_time_range in time_range_list:
+            existing_start_time, existing_end_time = existing_time_range
+            if start_time < existing_end_time and end_time > existing_start_time:
+                raise ValueError("time ranges must not overlap")
+        time_range_list.append((start_time, end_time))
+    return time_range_list
+
+
 class TimingRecorder:
     def __init__(self, name, rtsp_url, output_path, time_ranges: list[str], exit_event):
         if output_path is None:
@@ -21,7 +37,7 @@ class TimingRecorder:
         self.lock = threading.RLock()
         self.exit_event = exit_event
 
-        self.time_range_objects = self.__get_time_range_objects()
+        self.time_range_objects = get_time_range_objects(self.time_ranges)
 
     def start(self):
         print("TimingRecorder for camera [{}] starts successfully".format(self.name))
@@ -42,21 +58,6 @@ class TimingRecorder:
                         self.__background_record()
             if self.exit_event.wait(30):
                 break
-
-    def __get_time_range_objects(self):
-        time_range_list = []
-        for time_range in self.time_ranges:
-            _start_time, _end_time = time_range.split("-")
-            start_time = datetime.strptime(_start_time, "%H:%M").time()
-            end_time = datetime.strptime(_end_time, "%H:%M").time()
-            if start_time >= end_time:
-                raise ValueError("start_time must be less than end_time")
-            for existing_time_range in time_range_list:
-                existing_start_time, existing_end_time = existing_time_range
-                if start_time < existing_end_time and end_time > existing_start_time:
-                    raise ValueError("time ranges must not overlap")
-            time_range_list.append((start_time, end_time))
-        return time_range_list
 
     def __start_timer(self):
         for time_range_object in self.time_range_objects:
