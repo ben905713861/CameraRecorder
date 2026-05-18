@@ -84,6 +84,8 @@ class TimingRecorder:
         self.scheduler.start()
 
     def __should_record_now(self):
+        if self.time_range_objects is None or len(self.time_range_objects) == 0:
+            return True
         now = datetime.now().time()
         for time_range in self.time_range_objects:
             start_time, end_time = time_range

@@ -61,8 +61,8 @@ camera_list:
         motion_ratio_threshold: 0.02  # 像素变化比例阈值（2%）
         alert_interval: 1  # 告警间隔（秒）
         frame_skip: 5  # 跳帧间隔
-#      - type: "timing"
-#        scheduler:
-#          - "14:00-18:00"
-#          - "21:00-23:59"
+      - type: "timing"
+        scheduler:
+          - "14:00-18:00"
+          - "21:00-23:59"
 
