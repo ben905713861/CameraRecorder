@@ -84,6 +84,7 @@ class EventRecorder:
                 ]
                 process = subprocess.Popen(
                     command,
+                    stdin=subprocess.PIPE,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     text=True

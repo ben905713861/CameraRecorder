@@ -1,3 +1,4 @@
+import signal
 import threading
 
 from camera_urls import get_streams
@@ -36,8 +37,11 @@ def motion_detect_worker(config, camera_config, record_config):
                                      alert_interval=record_config.alert_interval,
                                      frame_skip=record_config.frame_skip,
                                      callback=record)
-    recorder.start()
-    motion_detector.start()
+    try:
+        recorder.start()
+        motion_detector.start()
+    finally:
+        recorder.cleanup()
 
 def get_rtsp_streams(camera_config) -> list[str]:
     while True:
@@ -63,6 +67,12 @@ def timer_record_worker(config, camera_config, record_config):
                    time_ranges=record_config.scheduler,
                    exit_event=exit_event).start()
 
+def signal_handler(signum, frame):
+    signame = signal.Signals(signum).name
+    print(f"\n⚠️ Main thread received signal: {signame} ({signum})")
+    exit_event.set()
+    print("Main thread is notifying all worker threads to stop...")
+
 def main():
     config = load_config()
     threads = []
@@ -79,15 +89,12 @@ def main():
                 raise ValueError(f"unsupported record type [{record_config.type}] for camera [{camera_config.name}]")
             thread.start()
             threads.append(thread)
-    try:
-        exit_event.wait()
-    except KeyboardInterrupt:
-        print("KeyboardInterrupt, exiting...")
-        exit_event.set()
     for thread in threads:
         thread.join()
         print("thread joined successfully")
 
 if __name__ == '__main__':
     exit_event = threading.Event()
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     main()
